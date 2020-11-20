@@ -1,0 +1,24 @@
+[package]
+name = "biscuit-c"
+version = "0.1.0"
+authors = ["Geoffroy Couprie <contact@geoffroycouprie.com>"]
+edition = "2018"
+build ="build.rs"
+
+[lib]
+crate-type = ["staticlib"]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+biscuit-auth = { path = "../biscuit-rust" }
+#biscuit-auth = { path = "../rust", git = "https://github.com/clevercloud/biscuit-rust" }
+rand = "0.7"
+rand_core = "^0.5"
+
+[dev-dependencies]
+inline-c = "0.1"
+
+[build-dependencies]
+cbindgen = "0.15"
