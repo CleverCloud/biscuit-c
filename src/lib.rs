@@ -49,10 +49,12 @@ pub extern fn error_message() -> *const c_char {
         }
     })
 }
+
 pub struct Biscuit(biscuit_auth::token::Biscuit);
 pub struct KeyPair(biscuit_auth::crypto::KeyPair);
 pub struct PublicKey(biscuit_auth::crypto::PublicKey);
 pub struct BiscuitBuilder<'a>(biscuit_auth::token::builder::BiscuitBuilder<'a>);
+pub struct BlockBuilder(biscuit_auth::token::builder::BlockBuilder);
 pub struct Verifier<'a>(biscuit_auth::token::verifier::Verifier<'a>);
 
 #[repr(C)]
@@ -351,16 +353,200 @@ pub unsafe extern "C" fn biscuit_free(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn block_builder_add_fact(
+    builder: Option<&mut BlockBuilder>,
+    fact: *const c_char,
+) -> bool {
+    if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let builder = builder.unwrap();
+
+    let fact = CStr::from_ptr(fact);
+    let s = fact.to_str();
+    if s.is_err() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+
+    builder.0.add_fact(s.unwrap()).is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn block_builder_add_rule(
+    builder: Option<&mut BlockBuilder>,
+    rule: *const c_char,
+) -> bool {
+    if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let builder = builder.unwrap();
+
+    let rule = CStr::from_ptr(rule);
+    let s = rule.to_str();
+    if s.is_err() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+
+    builder.0.add_rule(s.unwrap()).is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn block_builder_add_caveat(
+    builder: Option<&mut BlockBuilder>,
+    caveat: *const c_char,
+) -> bool {
+    if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let builder = builder.unwrap();
+
+    let caveat = CStr::from_ptr(caveat);
+    let s = caveat.to_str();
+    if s.is_err() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+
+    builder.0.add_caveat(s.unwrap()).is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn block_builder_free(
+    _builder: Option<Box<BlockBuilder>>,
+) {
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn verifier_add_fact(
+    verifier: Option<&mut Verifier>,
+    fact: *const c_char,
+) -> bool {
+    if verifier.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let verifier = verifier.unwrap();
+
+    let fact = CStr::from_ptr(fact);
+    let s = fact.to_str();
+    if s.is_err() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+
+    verifier.0.add_fact(s.unwrap()).is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn verifier_add_rule(
+    verifier: Option<&mut Verifier>,
+    rule: *const c_char,
+) -> bool {
+    if verifier.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let verifier = verifier.unwrap();
+
+    let rule = CStr::from_ptr(rule);
+    let s = rule.to_str();
+    if s.is_err() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+
+    verifier.0.add_rule(s.unwrap()).is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn verifier_add_caveat(
+    verifier: Option<&mut Verifier>,
+    caveat: *const c_char,
+) -> bool {
+    if verifier.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let verifier = verifier.unwrap();
+
+    let caveat = CStr::from_ptr(caveat);
+    let s = caveat.to_str();
+    if s.is_err() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+
+    verifier.0.add_caveat(s.unwrap())
+        .map_err(|e| {
+            update_last_error(Error::Biscuit(e));
+        })
+        .is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn verifier_verify(
+    verifier: Option<&mut Verifier>,
+) -> bool {
+    if verifier.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return false;
+    }
+    let verifier = verifier.unwrap();
+
+    match verifier.0.verify() {
+        Ok(()) => true,
+        Err(e) => {
+            update_last_error(Error::Biscuit(e));
+            false
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn verifier_print(
+    verifier: Option<&mut Verifier>,
+) -> *mut c_char {
+    if verifier.is_none() {
+        update_last_error(Error::InvalidArgument);
+        return std::ptr::null_mut();
+    }
+    let verifier = verifier.unwrap();
+
+    match CString::new(verifier.0.print_world()) {
+        Ok(s) => s.into_raw(),
+        Err(_) => {
+            update_last_error(Error::InvalidArgument);
+            return std::ptr::null_mut();
+        }
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn verifier_free<'a>(
     _verifier: Option<Box<Verifier<'a>>>,
 ) {
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn bytes_free(
     bytes: Bytes,
 ) {
     if bytes.ptr != std::ptr::null_mut() {
         let _v = Vec::from_raw_parts(bytes.ptr, bytes.len, bytes.capacity);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn string_free(
+  ptr: *mut c_char,
+) {
+    if ptr != std::ptr::null_mut() {
+        CString::from_raw(ptr);
     }
 }
 
@@ -376,24 +562,42 @@ mod tests {
 
         (assert_c! {
             #include <stdio.h>
+            #include <string.h>
             #include "bindings.h"
 
             int main() {
-                char *seed = "abcd";
+                char *seed = "abcdefghabcdefghabcdefghabcdefgh";
                 Slice s;
                 s.ptr = (const uint8_t *) seed;
-                s.len = sizeof(seed);
+                s.len = strlen(seed);
 
                 KeyPair * root_kp = keypair_new(s);
+                printf("keypair creation error? %s\n", error_message());
                 PublicKey* root = keypair_public(root_kp);
 
                 BiscuitBuilder* b = biscuit_builder(root_kp);
+                printf("builder creation error? %s\n", error_message());
                 biscuit_builder_add_authority_fact(b, "right(#authority, \"file1\", #read)");
+
+                printf("builder add authority error? %s\n", error_message());
 
                 Biscuit * biscuit = biscuit_builder_build(b, s);
                 printf("Hello, World!\n");
+                printf("biscuit creation error? %s\n", error_message());
 
                 Verifier * verifier = biscuit_verify(biscuit, root);
+                printf("verifier creation error? %s\n", error_message());
+                verifier_add_caveat(verifier, "*right(#abcd) <- right(#efgh)");
+                printf("verifier add caveat error? %s\n", error_message());
+                char* world_print = verifier_print(verifier);
+                printf("verifier world:\n%s\n", world_print);
+                string_free(world_print);
+                if(!verifier_verify(verifier)) {
+                    printf("verifier error: %s\n", error_message());
+                } else {
+                    printf("verifier succeeded\n");
+                }
+
                 verifier_free(verifier);
                 biscuit_free(biscuit);
                 public_key_free(root);

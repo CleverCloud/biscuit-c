@@ -7,6 +7,8 @@ typedef struct Biscuit Biscuit;
 
 typedef struct BiscuitBuilder BiscuitBuilder;
 
+typedef struct BlockBuilder BlockBuilder;
+
 typedef struct KeyPair KeyPair;
 
 typedef struct PublicKey PublicKey;
@@ -54,10 +56,32 @@ Bytes biscuit_serialize(const Biscuit *biscuit);
 
 Bytes biscuit_serialize_sealed(const Biscuit *biscuit, Slice secret);
 
+BlockBuilder *biscuit_create_block(const Biscuit *biscuit);
+
 Verifier *biscuit_verify(const Biscuit *biscuit, const PublicKey *root);
 
 void biscuit_free(Biscuit *_biscuit);
 
+bool block_builder_add_fact(BlockBuilder *builder, const char *fact);
+
+bool block_builder_add_rule(BlockBuilder *builder, const char *rule);
+
+bool block_builder_add_caveat(BlockBuilder *builder, const char *caveat);
+
+void block_builder_free(BlockBuilder *_builder);
+
+bool verifier_add_fact(Verifier *verifier, const char *fact);
+
+bool verifier_add_rule(Verifier *verifier, const char *rule);
+
+bool verifier_add_caveat(Verifier *verifier, const char *caveat);
+
+bool verifier_verify(Verifier *verifier);
+
+char *verifier_print(Verifier *verifier);
+
 void verifier_free(Verifier *_verifier);
 
 void bytes_free(Bytes bytes);
+
+void string_free(char *ptr);
