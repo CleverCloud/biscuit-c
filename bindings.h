@@ -24,6 +24,8 @@ typedef struct {
   uintptr_t capacity;
 } Bytes;
 
+const char *error_message(void);
+
 KeyPair *keypair_new(Slice seed);
 
 PublicKey *keypair_public(const KeyPair *kp);

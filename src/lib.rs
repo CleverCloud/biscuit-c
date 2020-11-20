@@ -1,9 +1,54 @@
 use rand::prelude::*;
 use std::{
-    ffi::CStr,
-    os::raw::c_char
+    fmt,
+    ffi::{CStr, CString},
+    os::raw::c_char,
+    cell::RefCell,
 };
 
+enum Error {
+    Biscuit(biscuit_auth::error::Token),
+    InvalidArgument,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::InvalidArgument => write!(f, "invalid argument"),
+            Error::Biscuit(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+
+thread_local! {
+    static LAST_ERROR: RefCell<Option<Error>> = RefCell::new(None);
+}
+
+fn update_last_error(err: Error) {
+    LAST_ERROR.with(|prev| {
+        *prev.borrow_mut() = Some(err);
+    });
+}
+
+#[no_mangle]
+pub extern fn error_message() -> *const c_char {
+    thread_local! {
+        static LAST: RefCell<Option<CString>> = RefCell::new(None);
+    }
+    LAST_ERROR.with(|prev| {
+        match *prev.borrow() {
+            Some(ref err) => {
+                let err = CString::new(err.to_string()).ok();
+                LAST.with(|ret| {
+                    *ret.borrow_mut() = err;
+                    ret.borrow().as_ref().map(|x| x.as_ptr()).unwrap_or(std::ptr::null())
+                })
+            },
+            None => std::ptr::null(),
+        }
+    })
+}
 pub struct Biscuit(biscuit_auth::token::Biscuit);
 pub struct KeyPair(biscuit_auth::crypto::KeyPair);
 pub struct PublicKey(biscuit_auth::crypto::PublicKey);
@@ -35,6 +80,7 @@ pub unsafe extern "C" fn keypair_new<'a>(
 ) -> Option<Box<KeyPair>> {
     let slice = seed.to_slice();
     if slice.len() != 32 {
+        update_last_error(Error::InvalidArgument);
         return None;
     }
 
@@ -50,6 +96,9 @@ pub unsafe extern "C" fn keypair_new<'a>(
 pub unsafe extern "C" fn keypair_public(
     kp: Option<&KeyPair>,
 ) -> Option<Box<PublicKey>> {
+    if kp.is_none() {
+        update_last_error(Error::InvalidArgument);
+    }
     let  kp = kp?;
 
     Some(Box::new(PublicKey((*kp).0.public())))
@@ -73,6 +122,9 @@ pub unsafe extern "C" fn public_key_free(
 pub unsafe extern "C" fn biscuit_builder<'a>(
     keypair: Option<&'a KeyPair>,
 ) -> Option<Box<BiscuitBuilder<'a>>> {
+    if keypair.is_none() {
+        update_last_error(Error::InvalidArgument);
+    }
     let keypair = keypair?;
 
     Some(Box::new(BiscuitBuilder(
@@ -86,6 +138,7 @@ pub unsafe extern "C" fn biscuit_builder_add_authority_fact<'a>(
     fact: *const c_char,
 ) -> bool {
     if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
         return false;
     }
     let builder = builder.unwrap();
@@ -93,6 +146,7 @@ pub unsafe extern "C" fn biscuit_builder_add_authority_fact<'a>(
     let fact = CStr::from_ptr(fact);
     let s = fact.to_str();
     if s.is_err() {
+        update_last_error(Error::InvalidArgument);
         return false;
     }
 
@@ -105,6 +159,7 @@ pub unsafe extern "C" fn biscuit_builder_add_authority_rule<'a>(
     rule: *const c_char,
 ) -> bool {
     if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
         return false;
     }
     let builder = builder.unwrap();
@@ -112,6 +167,7 @@ pub unsafe extern "C" fn biscuit_builder_add_authority_rule<'a>(
     let rule = CStr::from_ptr(rule);
     let s = rule.to_str();
     if s.is_err() {
+        update_last_error(Error::InvalidArgument);
         return false;
     }
 
@@ -124,6 +180,7 @@ pub unsafe extern "C" fn biscuit_builder_add_authority_caveat<'a>(
     caveat: *const c_char,
 ) -> bool {
     if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
         return false;
     }
     let builder = builder.unwrap();
@@ -131,6 +188,7 @@ pub unsafe extern "C" fn biscuit_builder_add_authority_caveat<'a>(
     let caveat = CStr::from_ptr(caveat);
     let s = caveat.to_str();
     if s.is_err() {
+        update_last_error(Error::InvalidArgument);
         return false;
     }
 
@@ -142,6 +200,9 @@ pub unsafe extern "C" fn biscuit_builder_build<'a>(
     builder: Option<Box<BiscuitBuilder<'a>>>,
     seed: Slice,
 ) -> Option<Box<Biscuit>> {
+    if builder.is_none() {
+        update_last_error(Error::InvalidArgument);
+    }
     let builder = builder?;
 
     let slice = seed.to_slice();
@@ -188,6 +249,7 @@ pub unsafe extern "C" fn biscuit_serialize(
     biscuit: Option<&Biscuit>,
 ) -> Bytes {
     if biscuit.is_none() {
+        update_last_error(Error::InvalidArgument);
         return Bytes {
             ptr: std::ptr::null_mut(),
             len: 0,
@@ -206,7 +268,8 @@ pub unsafe extern "C" fn biscuit_serialize(
 
         std::mem::forget(v);
         res
-    }).unwrap_or_else(|_| {
+    }).unwrap_or_else(|e| {
+        update_last_error(Error::Biscuit(e));
         Bytes {
             ptr: std::ptr::null_mut(),
             len: 0,
@@ -221,6 +284,7 @@ pub unsafe extern "C" fn biscuit_serialize_sealed(
     secret: Slice,
 ) -> Bytes {
     if biscuit.is_none() {
+        update_last_error(Error::InvalidArgument);
         return Bytes {
             ptr: std::ptr::null_mut(),
             len: 0,
@@ -240,7 +304,8 @@ pub unsafe extern "C" fn biscuit_serialize_sealed(
 
         std::mem::forget(v);
         res
-    }).unwrap_or_else(|_| {
+    }).unwrap_or_else(|e| {
+        update_last_error(Error::Biscuit(e));
         Bytes {
             ptr: std::ptr::null_mut(),
             len: 0,
@@ -250,11 +315,30 @@ pub unsafe extern "C" fn biscuit_serialize_sealed(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn biscuit_create_block(
+    biscuit: Option<&Biscuit>,
+) -> Option<Box<BlockBuilder>> {
+    if biscuit.is_none() {
+        update_last_error(Error::InvalidArgument);
+    }
+    let biscuit = biscuit?;
+
+    Some(Box::new(BlockBuilder((biscuit.0.create_block()))))
+}
+
+
+#[no_mangle]
 pub unsafe extern "C" fn biscuit_verify<'a, 'b>(
     biscuit: Option<&'a Biscuit>,
     root: Option<&'b PublicKey>,
 ) -> Option<Box<Verifier<'a>>> {
+    if biscuit.is_none() {
+        update_last_error(Error::InvalidArgument);
+    }
     let biscuit = biscuit?;
+    if root.is_none() {
+        update_last_error(Error::InvalidArgument);
+    }
     let root = root?;
 
     (*biscuit).0.verify((*root).0).map(Verifier).map(Box::new).ok()
